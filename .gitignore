@@ -1,0 +1,6 @@
+bin/
+build/
+cmake-build-debug/
+tests/out/
+*.log
+.DS_Store
