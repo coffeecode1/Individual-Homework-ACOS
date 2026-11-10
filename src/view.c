@@ -11,6 +11,10 @@
 static int  gLogFd = -1; // дескриптор журнала
 static int  gVisual = 1; // режим вывода
 static int  gColor = 1; // 1 - стандартный вывод - терминал, можно цвета
+static struct {
+    void (*write)(const char* msg, void* data);
+    void* data;
+} gEventSink;
 static int  gTime = 0; // текущий такт (для подписи событий)
 
 int ViewOpenLog(const char* fileName) {
@@ -25,6 +29,11 @@ int ViewOpenLog(const char* fileName) {
 int ViewLogFd(void) { return gLogFd; }
 
 void ViewSetTime(int t) { gTime = t; }
+
+void ViewSetEventSink(void (*sink)(const char* msg, void* data), void* data) {
+    gEventSink.write = sink;
+    gEventSink.data = data;
+}
 
 void ViewCloseLog(void) {
     if(gLogFd != -1) close(gLogFd);
@@ -43,6 +52,10 @@ void EventOut(const char* color, const char* fmt, ...) {
     va_start(args, fmt);
     vsnprintf(msg, sizeof(msg), fmt, args);
     va_end(args);
+    if(gEventSink.write) {
+        gEventSink.write(msg, gEventSink.data);
+        return;
+    }
 
     // В журнал - всегда и без цвета
     if(gLogFd != -1) dprintf(gLogFd, "[t=%04d] %s\n", gTime, msg);

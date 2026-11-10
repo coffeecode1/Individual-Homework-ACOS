@@ -62,6 +62,13 @@ void CrossroadInit(Crossroad* cr, Config* cfg);
 // Один такт имитации
 void CrossroadStep(Crossroad* cr);
 
+// Стадии такта для последовательной и многопроцессной версий.
+void CarArrivalStep(Crossroad* cr);
+void PedArrivalStep(Crossroad* cr);
+void LeaveStep(Crossroad* cr, int isPed); // -1: все, 0: авто, 1: пешеходы
+void EnterDirection(Crossroad* cr, int dir);
+void CheckInvariants(Crossroad* cr);
+
 // Сколько участников пропущено на перекрёсток
 static inline int CrossroadPassed(const Crossroad* cr) {
     return cr->stats.carsPassed + cr->stats.pedsPassed;

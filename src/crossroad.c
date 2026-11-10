@@ -34,12 +34,12 @@ void CrossroadInit(Crossroad* cr, Config* cfg) {
     ControllerInit(cr);
 }
 
-// Прибытие новых автомобилей и пешеходов
-void ArrivalStep(Crossroad* cr) {
+// Прибытие новых автомобилей
+void CarArrivalStep(Crossroad* cr) {
     const Config* cfg = cr->cfg;
     Stats* st = &cr->stats;
     // автомобили: с каждого направления не больше одного за такт
-    for(int d = 0; d < 4; ++d) {
+    for(int d = 0; d < DIR_COUNT; ++d) {
         if(!Chance(cfg->carRate[d])) continue;
         // случайный манёвр среди разрешённых на этом направлении
         int turns[TURN_COUNT], n = 0;
@@ -72,6 +72,11 @@ void ArrivalStep(Crossroad* cr) {
                  who, v.id, DIR_FROM[d], TURN_NAMES[FlowTurn(v.flow)],
                  front ? "В НАЧАЛО" : "в конец", FlowName(v.flow), f->size, f->capacity);
     }
+}
+
+void PedArrivalStep(Crossroad* cr) {
+    const Config* cfg = cr->cfg;
+    Stats* st = &cr->stats;
     // у каждого перехода не больше одного за такт
     for(int w = 0; w < WALK_COUNT; ++w) {
         if(!Chance(cfg->pedRate)) continue;
@@ -96,11 +101,11 @@ void ArrivalStep(Crossroad* cr) {
 }
 
 // Завершение участником проезда/перехода
-static void LeaveStep(Crossroad* cr) {
+void LeaveStep(Crossroad* cr, int isPed) {
     Zone* z = &cr->zone;
     for(int k = 0; k < z->count; ) {
         Occupant* o = &z->items[k];
-        if(o->leaveT > cr->t) { ++k; continue; } // ещё едет/идёт
+        if(o->leaveT > cr->t || (isPed >= 0 && o->isPed != isPed)) { ++k; continue; } // ещё едет/идёт
         if(o->isPed)
             EventOut(NULL, "Пешеход #%d завершил переход (%s переход)", o->id, WALK_NAMES[o->where]);
         else
@@ -115,28 +120,28 @@ static void ZoneAdd(Crossroad* cr, int isPed, int id, int where) {
 }
 
 // Въезд в зону участников с разрешающим сигналом
-static void EnterStep(Crossroad* cr) {
+void EnterDirection(Crossroad* cr, int dir) {
     Stats* st = &cr->stats;
     Zone* z = &cr->zone;
 
     if(IsPedGreen(cr)) {
-        // Все ожидающие пешеходы начинают переход
-        for(int w = 0; w < WALK_COUNT; ++w) {
-            while(cr->walks[w].size > 0 && z->count < MAX_ZONE) {
-                Pedestrian p = CrosswalkPop(&cr->walks[w]);
-                int delay = cr->t - p.arrivalT;
-                st->pedsPassed++;
-                st->pedDelay += delay;
-                if(delay > st->pedMaxDelay) st->pedMaxDelay = delay;
-                ZoneAdd(cr, 1, p.id, w);
-                EventOut(C_GREEN, "Пешеход #%d: зелёный, начал переход (%s переход), ждал %d такт.",
-                         p.id, WALK_NAMES[w], delay);
-            }
+        // Все ожидающие на этом переходе могут начать переход
+        Crosswalk* cw = &cr->walks[dir];
+        while(cw->size > 0 && z->count < MAX_ZONE) {
+            Pedestrian p = CrosswalkPop(cw);
+            int delay = cr->t - p.arrivalT;
+            st->pedsPassed++;
+            st->pedDelay += delay;
+            if(delay > st->pedMaxDelay) st->pedMaxDelay = delay;
+            ZoneAdd(cr, 1, p.id, dir);
+            EventOut(C_GREEN, "Пешеход #%d: зелёный, начал переход (%s переход), ждал %d такт.",
+                     p.id, WALK_NAMES[dir], delay);
         }
         return;
     }
     // C каждой полосы с зелёным въезжает машина
-    for(int i = 0; i < FLOW_COUNT; ++i) {
+    for(int turn = 0; turn < TURN_COUNT; ++turn) {
+        int i = FlowIndex(dir, turn);
         Flow* f = &cr->flows[i];
         if(f->size == 0 || z->count >= MAX_ZONE) continue;
         if(!IsGreen(cr, i)) continue; // инвариант: только на зелёный
@@ -158,7 +163,7 @@ static void EnterStep(Crossroad* cr) {
 }
 
 // Проверка инвариантов
-static void CheckInvariants(Crossroad* cr) {
+void CheckInvariants(Crossroad* cr) {
     const Config* cfg = cr->cfg;
     const Zone* z = &cr->zone;
     char msg[160];
@@ -206,9 +211,10 @@ static void CheckInvariants(Crossroad* cr) {
 
 // Один такт
 void CrossroadStep(Crossroad* cr) {
-    ArrivalStep(cr);
-    LeaveStep(cr);
+    CarArrivalStep(cr);
+    PedArrivalStep(cr);
+    LeaveStep(cr, -1);
     ControllerStep(cr);
-    EnterStep(cr);
+    for(int d = 0; d < DIR_COUNT; ++d) EnterDirection(cr, d);
     CheckInvariants(cr);
 }
