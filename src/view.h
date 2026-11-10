@@ -21,6 +21,8 @@ void ViewCloseLog(void);
 // Задание режима вывода (1 - с рисунком перекрёстка) и текущего такта
 void ViewSetMode(int visual);
 void ViewSetTime(int t);
+// Перенаправить текст событий вместо обычного вывода (NULL возвращает вывод).
+void ViewSetEventSink(void (*sink)(const char* msg, void* data), void* data);
 
 // Сообщение о событии: печатается на экран (цветом color, может быть NULL)
 // и записывается в журнал без цвета.
