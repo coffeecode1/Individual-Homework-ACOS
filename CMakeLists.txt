@@ -54,3 +54,12 @@ endif()
 add_crossroad_process(crossroad-proc-shm PROCESS_MODE=INDEPENDENT_SHM ${PROCESS_MAIN})
 add_crossroad_process(crossroad-proc-fifo PROCESS_MODE=INDEPENDENT_FIFO ${PROCESS_MAIN})
 add_crossroad_process(crossroad-worker PROCESS_WORKER)
+
+# Четвёртое ДЗ: сервер, клиенты направлений и наблюдатели по TCP.
+add_executable(crossroad-server src/tcp/server.c src/tcp/net.c ${CROSSROAD_MODEL})
+add_executable(crossroad-client src/tcp/client.c src/tcp/net.c)
+add_executable(crossroad-observer src/tcp/client.c src/tcp/net.c)
+target_compile_definitions(crossroad-observer PRIVATE TCP_OBSERVER)
+foreach(target crossroad-server crossroad-client crossroad-observer)
+    target_compile_options(${target} PRIVATE -Wall -Wextra)
+endforeach()

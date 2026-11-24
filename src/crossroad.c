@@ -34,10 +34,39 @@ void CrossroadInit(Crossroad* cr, Config* cfg) {
     ControllerInit(cr);
 }
 
+// Машину мог создать генератор модели или сетевой клиент.
+void CarArrive(Crossroad* cr, int d, int turn, int emergency) {
+    const Config* cfg = cr->cfg;
+    Stats* st = &cr->stats;
+    Vehicle v;
+    v.id = ++cr->nextId;
+    v.flow = FlowIndex(d, turn);
+    v.arrivalT = cr->t;
+    v.emergency = emergency;
+    st->carsArrived++;
+    if(v.emergency) st->emergencyArrived++;
+
+    Flow* f = &cr->flows[v.flow];
+    const char* who = v.emergency ? "ЭКСТРЕННОЕ авто" : "Авто";
+    if(f->size >= f->capacity) {
+        // переполнение очереди надо считать как затор
+        st->carsRefused++;
+        EventOut(C_RED, "%s #%d прибыло %s (%s): очередь %s заполнена - ОТКАЗ, затор",
+                 who, v.id, DIR_FROM[d], TURN_NAMES[FlowTurn(v.flow)], FlowName(v.flow));
+        return;
+    }
+    // экстренная машина встаёт в начало очереди
+    int front = v.emergency && cfg->emergencyPriority;
+    if(front) FlowPushFront(f, v);
+    else      FlowPush(f, v);
+    EventOut(v.emergency ? C_PURPLE : NULL, "%s #%d прибыло %s (%s) - %s очереди %s: %d/%d",
+             who, v.id, DIR_FROM[d], TURN_NAMES[FlowTurn(v.flow)],
+             front ? "В НАЧАЛО" : "в конец", FlowName(v.flow), f->size, f->capacity);
+}
+
 // Прибытие новых автомобилей
 void CarArrivalStep(Crossroad* cr) {
     const Config* cfg = cr->cfg;
-    Stats* st = &cr->stats;
     // автомобили: с каждого направления не больше одного за такт
     for(int d = 0; d < DIR_COUNT; ++d) {
         if(!Chance(cfg->carRate[d])) continue;
@@ -47,56 +76,38 @@ void CarArrivalStep(Crossroad* cr) {
             if(cfg->allowed[FlowIndex(d, t)]) turns[n++] = t;
         if(n == 0) continue;
 
-        Vehicle v;
-        v.id = ++cr->nextId;
-        v.flow = FlowIndex(d, turns[rand() % n]);
-        v.arrivalT = cr->t;
-        v.emergency = Chance(cfg->emergencyRate);
-        st->carsArrived++;
-        if(v.emergency) st->emergencyArrived++;
+        int turn = turns[rand() % n];
+        CarArrive(cr, d, turn, Chance(cfg->emergencyRate));
+    }
+}
 
-        Flow* f = &cr->flows[v.flow];
-        const char* who = v.emergency ? "ЭКСТРЕННОЕ авто" : "Авто";
-        if(f->size >= f->capacity) {
-            // переполнение очереди надо считать как затор
-            st->carsRefused++;
-            EventOut(C_RED, "%s #%d прибыло %s (%s): очередь %s заполнена - ОТКАЗ, затор",
-                     who, v.id, DIR_FROM[d], TURN_NAMES[FlowTurn(v.flow)], FlowName(v.flow));
-            continue;
-        }
-        // экстренная машина встаёт в начало очереди
-        int front = v.emergency && cfg->emergencyPriority;
-        if(front) FlowPushFront(f, v);
-        else      FlowPush(f, v);
-        EventOut(v.emergency ? C_PURPLE : NULL, "%s #%d прибыло %s (%s) - %s очереди %s: %d/%d",
-                 who, v.id, DIR_FROM[d], TURN_NAMES[FlowTurn(v.flow)],
-                 front ? "В НАЧАЛО" : "в конец", FlowName(v.flow), f->size, f->capacity);
+void PedArrive(Crossroad* cr, int w) {
+    Stats* st = &cr->stats;
+    Pedestrian p = { ++cr->nextId, cr->t };
+    Crosswalk* cw = &cr->walks[w];
+    st->pedsArrived++;
+    if(cw->size >= cw->capacity) {
+        st->pedsRefused++;
+        EventOut(C_RED, "Пешеход #%d подошёл к %s переходу: мест нет - ОТКАЗ", p.id, WALK_TO[w]);
+        return;
+    }
+    CrosswalkPush(cw, p);
+    if(!IsPedGreen(cr) && !cr->ctrl.pedRequest) {
+        cr->ctrl.pedRequest = 1;
+        EventOut(C_CYAN, "Пешеход #%d подошёл к %s переходу и НАЖАЛ КНОПКУ вызова",
+                 p.id, WALK_TO[w]);
+    } else {
+        EventOut(NULL, "Пешеход #%d подошёл к %s переходу и ждёт (ждут: %d)",
+                 p.id, WALK_TO[w], cw->size);
     }
 }
 
 void PedArrivalStep(Crossroad* cr) {
     const Config* cfg = cr->cfg;
-    Stats* st = &cr->stats;
     // у каждого перехода не больше одного за такт
     for(int w = 0; w < WALK_COUNT; ++w) {
         if(!Chance(cfg->pedRate)) continue;
-        Pedestrian p = { ++cr->nextId, cr->t };
-        Crosswalk* cw = &cr->walks[w];
-        st->pedsArrived++;
-        if(cw->size >= cw->capacity) {
-            st->pedsRefused++;
-            EventOut(C_RED, "Пешеход #%d подошёл к %s переходу: мест нет - ОТКАЗ", p.id, WALK_TO[w]);
-            continue;
-        }
-        CrosswalkPush(cw, p);
-        if(!IsPedGreen(cr) && !cr->ctrl.pedRequest) {
-            cr->ctrl.pedRequest = 1;
-            EventOut(C_CYAN, "Пешеход #%d подошёл к %s переходу и НАЖАЛ КНОПКУ вызова",
-                     p.id, WALK_TO[w]);
-        } else {
-            EventOut(NULL, "Пешеход #%d подошёл к %s переходу и ждёт (ждут: %d)",
-                     p.id, WALK_TO[w], cw->size);
-        }
+        PedArrive(cr, w);
     }
 }
 

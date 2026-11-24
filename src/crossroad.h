@@ -63,6 +63,8 @@ void CrossroadInit(Crossroad* cr, Config* cfg);
 void CrossroadStep(Crossroad* cr);
 
 // Стадии такта для последовательной и многопроцессной версий.
+void CarArrive(Crossroad* cr, int dir, int turn, int emergency);
+void PedArrive(Crossroad* cr, int walk);
 void CarArrivalStep(Crossroad* cr);
 void PedArrivalStep(Crossroad* cr);
 void LeaveStep(Crossroad* cr, int isPed); // -1: все, 0: авто, 1: пешеходы
